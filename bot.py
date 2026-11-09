@@ -178,6 +178,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-requests>=2.31
-beautifulsoup4>=4.12
-
