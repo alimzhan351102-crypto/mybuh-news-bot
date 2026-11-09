@@ -99,6 +99,9 @@ def build_text(a, limit):
 
 def tg(method, data):
     token = os.environ["TG_TOKEN"]
+    thread = os.environ.get("TG_THREAD_ID")
+    if thread:
+        data["message_thread_id"] = thread
     r = requests.post(f"https://api.telegram.org/bot{token}/{method}", data=data, timeout=30)
     res = r.json()
     if not res.get("ok"):
