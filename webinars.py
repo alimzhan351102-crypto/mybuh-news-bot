@@ -22,6 +22,7 @@ CAL_FILE = os.environ.get("WEBINARS_FILE", "webinars.txt")
 STATE_FILE = os.environ.get("WEBINARS_STATE", "reminded.json")
 TZ = timezone(timedelta(hours=5))  # Астана
 THREAD = os.environ.get("TG_WEBINARS_THREAD_ID", "4")
+WEBINARS_URL = os.environ.get("WEBINARS_URL", "https://portal.mybuh.kz/webinar")
 
 MONTHS = {
     "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
@@ -77,6 +78,13 @@ def build_text(e, heading):
         lines.append(f"🎤 Спикер: {html.escape(e['speaker'])}")
     if e["online"]:
         lines.append("💻 Формат: онлайн")
+    lines += [
+        "",
+        f'👉 <a href="{WEBINARS_URL}">Перейти к вебинарам</a>',
+        "",
+        "💡 Чтобы посмотреть вебинар, пожалуйста, войдите в свой аккаунт на портале. "
+        "Будем рады видеть вас!",
+    ]
     return "\n".join(lines)
 
 
