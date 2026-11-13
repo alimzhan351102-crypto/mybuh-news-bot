@@ -43,11 +43,15 @@ def fetch(url):
     return BeautifulSoup(r.text, "html.parser")
 
 
+def norm(text):
+    return re.sub(r"[^0-9a-zа-яё]+", " ", (text or "").lower()).strip()
+
+
 def get_news_links():
-    """Ссылки на новости в порядке, как на странице (обычно сначала свежие)."""
+    """[(ссылка, заголовок)] в порядке, как на странице (обычно сначала свежие)."""
     soup = fetch(NEWS_URL)
     host = urlparse(NEWS_URL).netloc
-    links, seen = [], set()
+    order, titles = [], {}
     for a in soup.find_all("a", href=True):
         url = urljoin(NEWS_URL, a["href"]).split("#")[0]
         p = urlparse(url)
@@ -56,10 +60,30 @@ def get_news_links():
         if re.search(r"/page/\d+|/(category|tag|tags|rubric)/", p.path):
             continue
         url = url.rstrip("/")
-        if url not in seen:
-            seen.add(url)
-            links.append(url)
-    return links
+        text = a.get_text(" ", strip=True)
+        if url not in titles:
+            order.append(url)
+            titles[url] = text
+        elif len(text) > len(titles[url]):
+            titles[url] = text  # берём самый полный текст ссылки (заголовок)
+    return [(u, titles[u]) for u in order]
+
+
+def key(url, title):
+    return f"{url} || {norm(title)}"
+
+
+def already_sent(url, title, sent):
+    """Новость считается новой, если у неё новый адрес ИЛИ изменился заголовок.
+    Текст ссылки бывает с подзаголовком (большие карточки), поэтому сравниваем по началу."""
+    cur = norm(title)
+    for s in sent:
+        u, _, old = s.partition(" || ")
+        if u != url:
+            continue
+        if not cur or not old or cur.startswith(old) or old.startswith(cur):
+            return True
+    return False
 
 
 def meta(soup, *names):
@@ -136,10 +160,10 @@ def save_state(urls):
 def check():
     links = get_news_links()
     print(f"Найдено ссылок на новости: {len(links)}")
-    for u in links[:20]:
-        print("  ", u)
+    for u, t in links[:20]:
+        print("  ", t[:80], "|", u)
     if links:
-        a = get_article(links[0])
+        a = get_article(links[0][0])
         print("\nПервая новость:")
         for k, v in a.items():
             print(f"  {k}: {v}")
@@ -157,22 +181,29 @@ def main():
 
     sent = load_state()
     if sent is None:
-        save_state(list(reversed(links)))
+        save_state([key(u, t) for u, t in reversed(links)])
         print(f"Первый запуск: запомнил {len(links)} существующих новостей, ничего не отправлял.")
         return
 
-    sent_set = set(sent)
-    new = [u for u in links if u not in sent_set][:MAX_PER_RUN]
+    # переход со старого формата (только адреса) на «адрес + заголовок»
+    if not any(" || " in s for s in sent):
+        old = set(sent)
+        on_page = {u for u, _ in links}
+        sent = [u for u in sent if u not in on_page] + [key(u, t) for u, t in reversed(links) if u in old]
+        save_state(sent)
+        print("Обновил формат списка отправленных новостей.")
+
+    new = [(u, t) for u, t in links if not already_sent(u, t, sent)][:MAX_PER_RUN]
     if not new:
         print("Новых новостей нет.")
         return
 
-    for url in reversed(new):  # отправляем от старых к новым
+    for url, title in reversed(new):  # отправляем от старых к новым
         try:
             a = get_article(url)
             send(a)
             print(f"Отправлено: {a['title']}")
-            sent.append(url)
+            sent.append(key(url, title))
             save_state(sent)
             time.sleep(3)
         except Exception as e:
